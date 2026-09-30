@@ -15,6 +15,8 @@ Usage:
     python pr_gatekeeper.py path/to/pr.diff # or review a saved diff
 """
 
+
+#imports
 import os
 import subprocess
 import sys
@@ -23,6 +25,7 @@ import time
 import anthropic
 from langchain_typesafe import Choice, Noul, Score, TypeSafeClassifier
 
+#Variables
 REVIEW_MODEL = os.getenv("REVIEW_MODEL", "claude-opus-4-8")
 BASE_BRANCH = os.getenv("BASE_BRANCH", "origin/master")
 MAX_DIFF_CHARS = 20_000
