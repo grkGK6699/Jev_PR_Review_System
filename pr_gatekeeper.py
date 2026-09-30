@@ -32,9 +32,7 @@ MAX_DIFF_CHARS = 20_000
 
 FLAG_THRESHOLD = 0.5      # Noul probability that counts as "yes"
 MIN_CONFIDENCE = 0.6      # below this, Jev isn't sure -> escalate
-HIGH_RISK_FRACTION = 0.75 # risk score above this always escalates
-MIN_RISK_TO_ESCALATE = 1.0 # below this risk score, never escalate -- regardless of other flags
-
+HIGH_RISK_FRACTION = 0.75 # fraction of the top risk level -- see HIGH_RISK_THRESHOLD below
 
 RISK_CRITERIA = [
     "Trivial: docs, comments, formatting, renames.",
@@ -45,7 +43,8 @@ RISK_CRITERIA = [
 ]
 # `risk` is a Score, whose expected value ranges over [0, len(criteria) - 1],
 # not [0, 1] like the Noul fields below -- threshold it accordingly.
-HIGH_RISK_THRESHOLD = HIGH_RISK_FRACTION * (len(RISK_CRITERIA) - 1)
+HIGH_RISK_THRESHOLD = HIGH_RISK_FRACTION * (len(RISK_CRITERIA) - 1)  # risk score above this always escalates
+MIN_RISK_TO_ESCALATE = 2.0  # "Moderate" (index 2) or higher -- below this, never escalate regardless of other flags
 
 
 QUESTIONS = {
