@@ -34,8 +34,10 @@ HIGH_RISK_FRACTION = 0.75 # risk score above this always escalates
 
 RISK_CRITERIA = [
     "Trivial: docs, comments, formatting, renames.",
+    "Low: minor logic changes confined to a single isolated function or module.",
     "Moderate: logic changes with a limited blast radius.",
     "High: auth, payments, data migrations, or public API contracts.",
+    "Critical: core infrastructure, billing, or irreversible destructive operations.",
 ]
 # `risk` is a Score, whose expected value ranges over [0, len(criteria) - 1],
 # not [0, 1] like the Noul fields below -- threshold it accordingly.
@@ -66,6 +68,18 @@ QUESTIONS = {
     ),
     "tested": Noul(
         instructions="The diff adds or updates tests that cover the changed behavior.",
+    ),
+    "dependencies": Noul(
+        instructions="The change adds, upgrades, downgrades, or removes a third-party "
+        "dependency (package manifest, lockfile, or a new import of an external library).",
+    ),
+    "performance": Noul(
+        instructions="The change could meaningfully affect runtime performance, memory "
+        "usage, or database query cost (e.g. loops, N+1 queries, algorithmic complexity).",
+    ),
+    "secrets_exposure": Noul(
+        instructions="The change touches environment variables, secrets, credentials, "
+        "or configuration files in a way that could expose sensitive values.",
     ),
 }
 
@@ -102,6 +116,12 @@ def escalation_reasons(r) -> list[str]:
         reasons.append("no test coverage")
     if r.scores["risk"].score > HIGH_RISK_THRESHOLD:
         reasons.append("high risk score")
+    if r.nouls["dependencies"].noul > FLAG_THRESHOLD:
+        reasons.append("dependency change")
+    if r.nouls["performance"].noul > FLAG_THRESHOLD:
+        reasons.append("possible performance impact")
+    if r.nouls["secrets_exposure"].noul > FLAG_THRESHOLD:
+        reasons.append("possible secrets/config exposure")
     if r.choices["area"].confidence < MIN_CONFIDENCE:
         reasons.append("low triage confidence")
     if r.scores["risk"].confidence < MIN_CONFIDENCE:
@@ -137,6 +157,9 @@ def main() -> None:
     print(f"  security  : {r.nouls['security'].noul:.2f}")
     print(f"  breaking  : {r.nouls['breaking'].noul:.2f}")
     print(f"  tested    : {r.nouls['tested'].noul:.2f}")
+    print(f"  deps      : {r.nouls['dependencies'].noul:.2f}")
+    print(f"  perf      : {r.nouls['performance'].noul:.2f}")
+    print(f"  secrets   : {r.nouls['secrets_exposure'].noul:.2f}")
 
     reasons = escalation_reasons(r)
     if not reasons:
