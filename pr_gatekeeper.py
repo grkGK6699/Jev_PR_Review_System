@@ -9,8 +9,8 @@ System Two (LLM): only runs when Jev flags the PR as risky OR isn't confident.
 Most PRs (docs, small fixes) never pay for a full LLM review.
 
 Usage:
-    pip install langchain-typesafe langchain-openai
-    export TYPESAFE_API_KEY=...  OPENAI_API_KEY=...
+    pip install langchain-typesafe anthropic
+    export TYPESAFE_API_KEY=...  ANTHROPIC_API_KEY=...
     python pr_gatekeeper.py                 # diffs HEAD against origin/main
     python pr_gatekeeper.py path/to/pr.diff # or review a saved diff
 """
@@ -20,11 +20,11 @@ import subprocess
 import sys
 import time
 
-from langchain.chat_models import init_chat_model
+import anthropic
 from langchain_typesafe import Choice, Noul, Score, TypeSafeClassifier
 
-REVIEW_MODEL = os.getenv("REVIEW_MODEL", "openai:gpt-5.6-terra")
-BASE_BRANCH = os.getenv("BASE_BRANCH", "origin/main")
+REVIEW_MODEL = os.getenv("REVIEW_MODEL", "claude-opus-4-8")
+BASE_BRANCH = os.getenv("BASE_BRANCH", "origin/master")
 MAX_DIFF_CHARS = 20_000
 
 FLAG_THRESHOLD = 0.5      # Noul probability that counts as "yes"
@@ -103,7 +103,7 @@ def escalation_reasons(r) -> list[str]:
 
 
 def deep_review(diff: str, reasons: list[str]) -> str:
-    llm = init_chat_model(REVIEW_MODEL)
+    client = anthropic.Anthropic()
     prompt = (
         "You are a senior engineer reviewing a pull request.\n"
         f"A fast triage model flagged it for: {', '.join(reasons)}.\n"
@@ -111,7 +111,12 @@ def deep_review(diff: str, reasons: list[str]) -> str:
         "and end with APPROVE or REQUEST CHANGES.\n\n"
         f"```diff\n{diff}\n```"
     )
-    return llm.invoke(prompt).content
+    response = client.messages.create(
+        model=REVIEW_MODEL,
+        max_tokens=4096,
+        messages=[{"role": "user", "content": prompt}],
+    )
+    return next(block.text for block in response.content if block.type == "text")
 
 
 def main() -> None:
