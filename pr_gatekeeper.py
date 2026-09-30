@@ -34,8 +34,10 @@ HIGH_RISK_FRACTION = 0.75 # risk score above this always escalates
 
 RISK_CRITERIA = [
     "Trivial: docs, comments, formatting, renames.",
+    "Low: minor logic changes confined to a single isolated function or module.",
     "Moderate: logic changes with a limited blast radius.",
     "High: auth, payments, data migrations, or public API contracts.",
+    "Critical: core infrastructure, billing, or irreversible destructive operations.",
 ]
 # `risk` is a Score, whose expected value ranges over [0, len(criteria) - 1],
 # not [0, 1] like the Noul fields below -- threshold it accordingly.
@@ -67,6 +69,22 @@ QUESTIONS = {
     "tested": Noul(
         instructions="The diff adds or updates tests that cover the changed behavior.",
     ),
+    "dependencies": Noul(
+        instructions="The change adds, upgrades, downgrades, or removes a third-party "
+        "dependency (package manifest, lockfile, or a new import of an external library).",
+    ),
+    "performance": Noul(
+        instructions="The change could meaningfully affect runtime performance, memory "
+        "usage, or database query cost (e.g. loops, N+1 queries, algorithmic complexity).",
+    ),
+    "secrets_exposure": Noul(
+        instructions="The change touches environment variables, secrets, credentials, "
+        "or configuration files in a way that could expose sensitive values.",
+    ),
+    "addresses_description": Noul(
+        instructions="The `diff` actually implements what `description` claims the "
+        "change does, with no unrelated scope creep and no missing pieces.",
+    ),
 }
 
 
@@ -84,10 +102,25 @@ def load_diff() -> str:
     return diff[:MAX_DIFF_CHARS]
 
 
-def triage(diff: str):
+def load_pr_description() -> str:
+    """Stand-in for the PR body: commit messages unique to HEAD vs. BASE_BRANCH."""
+    result = subprocess.run(
+        ["git", "log", f"{BASE_BRANCH}..HEAD", "--format=%B"],
+        capture_output=True, text=True, check=True,
+    )
+    return result.stdout.strip()
+
+
+def triage(diff: str, description: str):
     classifier = TypeSafeClassifier()
+    questions = dict(QUESTIONS)
+    state: dict[str, str] | str = diff
+    if description:
+        state = {"description": description, "diff": diff}
+    else:
+        questions.pop("addresses_description", None)
     start = time.perf_counter()
-    result = classifier.invoke({"state": diff, "questions": QUESTIONS})
+    result = classifier.invoke({"state": state, "questions": questions})
     elapsed_ms = (time.perf_counter() - start) * 1000
     return result, elapsed_ms
 
@@ -102,6 +135,15 @@ def escalation_reasons(r) -> list[str]:
         reasons.append("no test coverage")
     if r.scores["risk"].score > HIGH_RISK_THRESHOLD:
         reasons.append("high risk score")
+    if r.nouls["dependencies"].noul > FLAG_THRESHOLD:
+        reasons.append("dependency change")
+    if r.nouls["performance"].noul > FLAG_THRESHOLD:
+        reasons.append("possible performance impact")
+    if r.nouls["secrets_exposure"].noul > FLAG_THRESHOLD:
+        reasons.append("possible secrets/config exposure")
+    addresses_description = r.nouls.get("addresses_description")
+    if addresses_description is not None and addresses_description.noul < FLAG_THRESHOLD:
+        reasons.append("diff may not match PR description")
     if r.choices["area"].confidence < MIN_CONFIDENCE:
         reasons.append("low triage confidence")
     if r.scores["risk"].confidence < MIN_CONFIDENCE:
@@ -128,15 +170,26 @@ def deep_review(diff: str, reasons: list[str]) -> str:
 
 def main() -> None:
     diff = load_diff()
-    r, ms = triage(diff)
+    description = load_pr_description()
+    r, ms = triage(diff, description)
 
     area = r.choices["area"]
     print(f"\n⚡ Jev triage ({ms:.0f} ms)")
+    if description:
+        print(f"  description: {description.splitlines()[0][:80]}")
+    else:
+        print("  description: (none found — addresses_description check skipped)")
     print(f"  area      : {area.choice} (confidence {area.confidence:.2f})")
     print(f"  risk      : {r.scores['risk'].score:.2f}")
     print(f"  security  : {r.nouls['security'].noul:.2f}")
     print(f"  breaking  : {r.nouls['breaking'].noul:.2f}")
     print(f"  tested    : {r.nouls['tested'].noul:.2f}")
+    print(f"  deps      : {r.nouls['dependencies'].noul:.2f}")
+    print(f"  perf      : {r.nouls['performance'].noul:.2f}")
+    print(f"  secrets   : {r.nouls['secrets_exposure'].noul:.2f}")
+    addresses_description = r.nouls.get("addresses_description")
+    if addresses_description is not None:
+        print(f"  matches   : {addresses_description.noul:.2f}")
 
     reasons = escalation_reasons(r)
     if not reasons:
