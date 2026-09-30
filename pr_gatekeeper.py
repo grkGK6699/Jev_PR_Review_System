@@ -33,6 +33,7 @@ MAX_DIFF_CHARS = 20_000
 FLAG_THRESHOLD = 0.5      # Noul probability that counts as "yes"
 MIN_CONFIDENCE = 0.6      # below this, Jev isn't sure -> escalate
 HIGH_RISK_FRACTION = 0.75 # risk score above this always escalates
+MIN_RISK_TO_ESCALATE = 1.0 # below this risk score, never escalate -- regardless of other flags
 
 
 RISK_CRITERIA = [
@@ -129,6 +130,8 @@ def triage(diff: str, description: str):
 
 
 def escalation_reasons(r) -> list[str]:
+    if r.scores["risk"].score < MIN_RISK_TO_ESCALATE:
+        return []
     reasons = []
     if r.nouls["security"].noul > FLAG_THRESHOLD:
         reasons.append("security-sensitive")
