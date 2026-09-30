@@ -29,6 +29,7 @@ MAX_DIFF_CHARS = 20_000
 
 FLAG_THRESHOLD = 0.5      # Noul probability that counts as "yes"
 MIN_CONFIDENCE = 0.6      # below this, Jev isn't sure -> escalate
+HIGH_RISK_THRESHOLD = 0.7 # risk score above this always escalates
 
 QUESTIONS = {
     "area": Choice(
@@ -92,6 +93,8 @@ def escalation_reasons(r) -> list[str]:
         reasons.append("possible breaking change")
     if r.nouls["tested"].noul < FLAG_THRESHOLD and r.choices["area"].choice != "docs":
         reasons.append("no test coverage")
+    if r.scores["risk"].score > HIGH_RISK_THRESHOLD:
+        reasons.append("high risk score")
     if r.choices["area"].confidence < MIN_CONFIDENCE:
         reasons.append("low triage confidence")
     if r.scores["risk"].confidence < MIN_CONFIDENCE:
